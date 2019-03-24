@@ -1,0 +1,29 @@
+
+create or replace function tg_notify_table_insert()
+  returns trigger
+  language plpgsql
+as $$
+declare
+  channel text := TG_ARGV[0];
+begin
+  PERFORM (
+    with payload(id, status, event_name, event_data) as (
+      select NEW.id, NEW.status, NEW.event_name, NEW.event_data
+    )
+    select pg_notify(channel, row_to_json(payload)::text) from payload
+  );
+  RETURN NULL;
+end;
+$$;
+
+create table {CHANNEL_TABLE_NAME} (
+  id          serial,
+  status      int2,
+  event_name  varchar(255),
+  event_data  text
+);
+
+CREATE TRIGGER notification_tg_{CHANNEL_TABLE_NAME} AFTER INSERT ON {CHANNEL_TABLE_NAME}
+  FOR EACH ROW EXECUTE PROCEDURE tg_notify_table_insert('{CHANNEL_TABLE_NAME}');
+
+

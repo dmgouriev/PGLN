@@ -1,0 +1,72 @@
+import com.impossibl.postgres.api.jdbc.PGConnection;
+import com.impossibl.postgres.jdbc.PGDataSource;
+import org.inet.notifier.service.EventExecutorService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.configurationprocessor.json.JSONException;
+import org.springframework.boot.configurationprocessor.json.JSONObject;
+import org.springframework.stereotype.Service;
+import ru.mvnm.pgln.PglnConfiguration;
+import ru.mvnm.pgln.PglnNotification;
+
+import java.sql.SQLException;
+import java.util.Set;
+
+@Service
+public class ListenerConfiguration implements PglnConfiguration {
+
+    @Autowired
+    @Qualifier("PGJDBC-NG-DataSource")
+    private PGDataSource dataSource;
+
+    @Autowired
+    private EventExecutorService eventExecutor;
+
+    private PglnConfiguration.Executor executor = new Executor() {
+        @Override
+        public void proceed(String channelName, PglnNotification notification) {
+            if (notification != null) {
+                eventExecutor.execute(channelName, notification);
+            }
+        }
+    };
+
+    private PglnConfiguration.JsonParser parser = jsonString -> {
+        try {
+            JSONObject obj = new JSONObject(jsonString);
+            int id = obj.optInt("id", 0);
+            int status = obj.optInt("status", 0);
+            String eventName = obj.optString("event_name", "");
+            String eventData = obj.optString("event_data", "{}");
+            return new PglnNotification(id, status, eventName, eventData);
+        } catch (JSONException e) {
+            return null;
+        }
+    };
+
+    @Override
+    public PGConnection getConnection() {
+        try {
+            return (PGConnection) dataSource.getConnection();
+        } catch (SQLException e) {
+            e.printStackTrace(System.err);
+            return null;
+        }
+    }
+
+    @Override
+    public Executor getExecutor() {
+        return executor;
+    }
+
+    @Override
+    public JsonParser getJsonParser() {
+        return parser;
+    }
+
+    @Override
+    public Set<String> getChannels() {
+        return Set.of("portal_events");
+    }
+
+}
